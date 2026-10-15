@@ -1,0 +1,804 @@
+/* ==========================================================================
+   SteamFRG — interface em estilo HUD de jogo (mobile first)
+   - Base pensada para celular; os breakpoints só ACRESCENTAM (min-width)
+   - A fonte externa é opcional: sem internet, entra a fonte do sistema
+   - O JavaScript depende destes nomes: --verde, --amarelo, --vermelho
+   ========================================================================== */
+
+@import url("https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&display=swap");
+
+/* Permite animar o anel de compatibilidade (o JS define --p inline) */
+@property --p {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
+
+/* ---------- Tokens ---------- */
+:root {
+  color-scheme: dark;
+
+  --fundo: #070b18;
+  --painel-fundo: linear-gradient(180deg, #111c3f, #0c1431);
+  --painel-solido: #0e1634;
+  --borda: linear-gradient(
+    135deg,
+    rgba(56, 217, 255, 0.75),
+    rgba(56, 217, 255, 0.14) 38%,
+    rgba(124, 140, 255, 0.22) 68%,
+    rgba(124, 140, 255, 0.65)
+  );
+  --trilho: rgba(129, 160, 214, 0.16);
+
+  --texto: #d3e1f3;
+  --suave: #93a9c8;
+  --destaque: #38d9ff;
+  --violeta: #7c8cff;
+  --ouro: #ffb13b;
+
+  /* usados pelo JS no anel de compatibilidade */
+  --verde: #3df0a4;
+  --amarelo: #ffd166;
+  --vermelho: #ff5c7a;
+
+  --fonte-titulo: "Chakra Petch", "Segoe UI", "Trebuchet MS", system-ui, sans-serif;
+  --fonte-texto: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  --margem: 1rem;
+}
+
+/* ---------- Base ---------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  scrollbar-color: #2a4a72 var(--fundo);
+  background-color: var(--fundo);
+  background-image:
+    radial-gradient(48rem 32rem at 8% -8%, rgba(56, 217, 255, 0.16), transparent 70%),
+    radial-gradient(44rem 30rem at 100% 4%, rgba(124, 140, 255, 0.18), transparent 70%);
+  background-repeat: no-repeat;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  /* respeita notch e barras do celular (precisa de viewport-fit=cover no HTML) */
+  padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 0)
+    env(safe-area-inset-left, 0);
+  font: 400 1rem/1.55 var(--fonte-texto);
+  color: var(--texto);
+  overflow-wrap: break-word;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Grade sutil de fundo, como o mapa de um jogo */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(130, 170, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(130, 170, 255, 0.05) 1px, transparent 1px);
+  background-size: 2.5rem 2.5rem;
+  -webkit-mask-image: linear-gradient(#000, transparent 75%);
+  mask-image: linear-gradient(#000, transparent 75%);
+}
+
+img {
+  max-width: 100%;
+}
+
+/* ---------- Cabeçalho ---------- */
+header {
+  width: 100%;
+  max-width: 76rem;
+  margin: 0 auto;
+  padding: 1.75rem var(--margem) 0.25rem;
+}
+
+h1 {
+  margin: 0;
+  font: 700 clamp(2.25rem, 10vw, 3.75rem) / 1 var(--fonte-titulo);
+  letter-spacing: 0.01em;
+  color: #fff;
+  text-shadow: 0 0 28px rgba(56, 217, 255, 0.4);
+}
+
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  h1 {
+    background: linear-gradient(95deg, #fff 0%, #8fe9ff 55%, #a99cff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    text-shadow: none;
+  }
+}
+
+h1::after {
+  content: "";
+  display: block;
+  width: 5rem;
+  height: 4px;
+  margin-top: 0.9rem;
+  background: linear-gradient(90deg, var(--destaque), var(--violeta));
+  -webkit-clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+  clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+}
+
+header p {
+  max-width: 46ch;
+  margin: 0.9rem 0 0;
+  font-size: 0.98rem;
+  color: var(--suave);
+}
+
+/* ---------- Layout principal ---------- */
+main {
+  width: 100%;
+  max-width: 76rem;
+  margin: 0 auto;
+  padding: 1.25rem var(--margem) 3rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr); /* evita que conteúdo largo estique a página */
+  gap: 1rem;
+  align-items: start;
+}
+
+#resultado {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-content: start;
+}
+
+/* ---------- Painéis com cantos cortados ----------
+   O elemento desenha a borda (fundo em degradê) e o ::before, 1px menor,
+   desenha o preenchimento. Se clip-path não existir, vira um painel retangular. */
+.cartao {
+  --corte: 14px;
+  padding: 1.1rem;
+}
+.jogo {
+  --corte: 12px;
+  padding: 1rem 1rem 1rem 1.2rem;
+}
+.indicador {
+  --corte: 9px;
+  padding: 0.8rem 0.5rem;
+  text-align: center;
+}
+
+.cartao,
+.jogo,
+.indicador {
+  --recorte: polygon(
+    0 0,
+    calc(100% - var(--corte)) 0,
+    100% var(--corte),
+    100% 100%,
+    var(--corte) 100%,
+    0 calc(100% - var(--corte))
+  );
+  --recorte-interno: polygon(
+    0 0,
+    calc(100% - var(--corte) + 0.6px) 0,
+    100% calc(var(--corte) - 0.6px),
+    100% 100%,
+    calc(var(--corte) - 0.6px) 100%,
+    0 calc(100% - var(--corte) + 0.6px)
+  );
+  position: relative;
+  isolation: isolate;
+  background: var(--borda);
+  -webkit-clip-path: var(--recorte);
+  clip-path: var(--recorte);
+}
+
+.cartao::before,
+.jogo::before,
+.indicador::before {
+  content: "";
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  left: 1px;
+  z-index: -1;
+  background: var(--painel-fundo);
+  -webkit-clip-path: var(--recorte-interno);
+  clip-path: var(--recorte-interno);
+}
+
+/* ---------- Títulos ---------- */
+h2 {
+  margin: 0 0 0.85rem;
+  font: 600 1.1rem/1.3 var(--fonte-titulo);
+  letter-spacing: 0.01em;
+  color: #fff;
+}
+
+h2::before {
+  content: "";
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: 0.6rem;
+  vertical-align: 0.1em;
+  background: var(--destaque);
+  box-shadow: 0 0 8px var(--destaque);
+  transform: rotate(45deg);
+}
+
+.cartao h2:not(:first-child) {
+  margin-top: 1.6rem;
+}
+
+#resultado > h2 {
+  margin: 0.5rem 0 0;
+  font-size: 1.25rem;
+}
+
+.perfil h2::before {
+  display: none;
+}
+
+/* ---------- Formulário ---------- */
+label {
+  display: block;
+  margin: 0.85rem 0 0.3rem;
+  font-size: 0.875rem;
+  color: var(--suave);
+}
+
+input,
+select,
+textarea {
+  display: block;
+  width: 100%;
+  min-height: 2.9rem;
+  padding: 0.7rem 0.85rem;
+  font: inherit;
+  font-size: 1rem; /* 16px: evita o zoom automático do iPhone ao focar */
+  color: #fff;
+  background-color: #080e22;
+  border: 1px solid rgba(129, 160, 214, 0.3);
+  border-radius: 3px;
+  -webkit-appearance: none;
+  appearance: none;
+  touch-action: manipulation;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+textarea {
+  min-height: 5.5rem;
+  resize: vertical;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #5f7699;
+  opacity: 1;
+}
+
+select {
+  padding-right: 2.5rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%2338d9ff' stroke-width='2'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.9rem center;
+  background-size: 0.75rem;
+}
+
+option {
+  background: #0b1230;
+  color: #fff;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 2px solid transparent; /* aparece em modo de alto contraste */
+  outline-offset: 2px;
+  border-color: var(--destaque);
+  box-shadow: 0 0 0 3px rgba(56, 217, 255, 0.22);
+}
+
+.aviso {
+  margin: 0.6rem 0 0;
+  font-size: 0.8rem;
+  color: var(--suave);
+}
+
+/* ---------- Botão ---------- */
+button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 3rem;
+  margin-top: 1.5rem;
+  padding: 0.8rem 1.25rem;
+  font: 700 1rem/1 var(--fonte-titulo);
+  letter-spacing: 0.02em;
+  color: #04121a;
+  background: linear-gradient(135deg, #6be6ff, #38d9ff 45%, #7c8cff);
+  border: 0;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  touch-action: manipulation;
+  -webkit-clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+  transition: filter 0.15s, transform 0.1s;
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+button:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.9);
+}
+
+/* Enquanto carrega (o JS desabilita o botão): listras em movimento */
+button:disabled {
+  cursor: progress;
+  color: #c3dbea;
+  background-color: #1d3a52;
+  background-image: linear-gradient(
+    135deg,
+    #1d3a52 25%,
+    #26566f 25%,
+    #26566f 50%,
+    #1d3a52 50%,
+    #1d3a52 75%,
+    #26566f 75%
+  );
+  background-size: 28px 28px;
+  animation: listras 0.9s linear infinite;
+}
+
+/* ---------- Mensagem de status ---------- */
+#mensagem {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--suave);
+}
+
+#mensagem:empty {
+  display: none;
+}
+
+#mensagem:not(:empty) {
+  padding: 0.75rem 1rem;
+  border-left: 3px solid var(--destaque);
+  background: rgba(56, 217, 255, 0.07);
+}
+
+#mensagem.erro:not(:empty) {
+  color: #ffc2cd;
+  border-left-color: var(--vermelho);
+  background: rgba(255, 92, 122, 0.1);
+}
+
+/* Barra de progresso enquanto a mensagem não é um erro */
+#mensagem:not(:empty):not(.erro)::after {
+  content: "";
+  display: block;
+  height: 3px;
+  margin-top: 0.6rem;
+  background-image: linear-gradient(90deg, transparent, var(--destaque), transparent);
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: carregar 1.2s ease-in-out infinite;
+}
+
+/* ---------- Perfil ---------- */
+.perfil {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1rem;
+  align-items: center;
+}
+
+.perfil p {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.avatar {
+  width: 4.5rem;
+  height: 4.5rem;
+  object-fit: cover;
+  border-radius: 50%;
+  border: 2px solid var(--destaque);
+  box-shadow: 0 0 0 4px rgba(56, 217, 255, 0.12), 0 0 20px rgba(56, 217, 255, 0.35);
+}
+
+/* ---------- Indicadores ---------- */
+.indicadores {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.indicador strong {
+  display: block;
+  font: 700 clamp(1.5rem, 6vw, 2.25rem) / 1.1 var(--fonte-titulo);
+  color: var(--destaque);
+}
+
+.indicador:nth-child(3) strong {
+  color: var(--ouro); /* promoções: a cor do "dinheiro" do jogo */
+}
+
+.indicador span {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+  line-height: 1.25;
+  color: var(--suave);
+}
+
+/* ---------- Rodízio de chaves ---------- */
+.rodizio {
+  justify-self: start;
+  margin: 0;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.85rem;
+  color: var(--suave);
+  border: 1px dashed rgba(56, 217, 255, 0.35);
+}
+
+.rodizio::before {
+  content: "";
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: 0.55rem;
+  border-radius: 50%;
+  background: var(--verde);
+  box-shadow: 0 0 8px var(--verde);
+}
+
+/* ---------- Gráficos de barras segmentadas ---------- */
+.graficos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: 1rem;
+}
+
+.linha {
+  display: grid;
+  grid-template-columns: minmax(4.5rem, 8.5rem) minmax(0, 1fr) 2.75rem;
+  gap: 0.6rem;
+  align-items: center;
+  margin-bottom: 0.65rem;
+  font-size: 0.9rem;
+}
+
+.linha:last-child {
+  margin-bottom: 0;
+}
+
+.rotulo {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.barra {
+  height: 0.7rem;
+  overflow: hidden;
+  background: var(--trilho);
+  -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 6px, transparent 6px 8px);
+  mask-image: repeating-linear-gradient(90deg, #000 0 6px, transparent 6px 8px);
+}
+
+.barra span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--destaque), var(--violeta));
+  transform-origin: left center;
+  animation: encher 0.9s cubic-bezier(0.22, 0.8, 0.26, 1) both;
+}
+
+.linha:nth-child(n + 3) .barra span { animation-delay: 0.06s; }
+.linha:nth-child(n + 4) .barra span { animation-delay: 0.12s; }
+.linha:nth-child(n + 5) .barra span { animation-delay: 0.18s; }
+.linha:nth-child(n + 6) .barra span { animation-delay: 0.24s; }
+
+.valor {
+  text-align: right;
+  font: 600 0.9rem var(--fonte-titulo);
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+}
+
+/* ---------- Capas dos mais jogados ---------- */
+.capas {
+  display: flex;
+  gap: 0.75rem;
+  padding-bottom: 0.6rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  scrollbar-color: #2a4a72 transparent;
+}
+
+.capas::-webkit-scrollbar {
+  height: 6px;
+}
+.capas::-webkit-scrollbar-thumb {
+  background: #2a4a72;
+  border-radius: 3px;
+}
+
+.capa {
+  flex: 0 0 min(68%, 11rem);
+  scroll-snap-align: start;
+  font-size: 0.8rem;
+  line-height: 1.3;
+}
+
+.capa img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 460 / 215;
+  object-fit: cover;
+  background: #0a1124;
+  border: 1px solid rgba(56, 217, 255, 0.25);
+  transition: filter 0.2s;
+}
+
+.capa span {
+  display: block;
+  margin-top: 0.4rem;
+}
+
+/* ---------- Recomendações ---------- */
+.grade {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
+  gap: 1rem;
+}
+
+.jogo-topo {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.jogo h3 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font: 600 1.05rem/1.25 var(--fonte-titulo);
+  color: #fff;
+  overflow-wrap: anywhere;
+}
+
+.jogo p {
+  margin: 0.6rem 0 0.8rem;
+  font-size: 0.94rem;
+  color: #bcd0e8;
+}
+
+/* Jogo em promoção: borda dourada e trilho lateral */
+.jogo.promo {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 177, 59, 0.85),
+    rgba(255, 177, 59, 0.16) 40%,
+    rgba(56, 217, 255, 0.14) 75%,
+    rgba(56, 217, 255, 0.4)
+  );
+}
+
+.jogo.promo::after {
+  content: "";
+  position: absolute;
+  top: 14px;
+  bottom: 18px;
+  left: 0;
+  width: 3px;
+  background: var(--ouro);
+  box-shadow: 0 0 10px var(--ouro);
+}
+
+/* Anel de compatibilidade: medidor segmentado que varre até a nota */
+.anel {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 3.75rem;
+  height: 3.75rem;
+  border-radius: 50%;
+  background:
+    repeating-conic-gradient(from 0deg, transparent 0 8deg, var(--painel-solido) 8deg 10deg),
+    conic-gradient(var(--cor) calc(var(--p) * 1%), var(--trilho) 0);
+  box-shadow: 0 0 16px -2px var(--cor);
+  animation: varrer 1.1s cubic-bezier(0.22, 0.8, 0.26, 1) 0.15s both;
+}
+
+.anel span {
+  display: grid;
+  place-items: center;
+  width: 2.8rem;
+  height: 2.8rem;
+  border-radius: 50%;
+  background: var(--painel-solido);
+  font: 700 0.8rem var(--fonte-titulo);
+  color: #fff;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.tag {
+  padding: 0.1rem 0.6rem;
+  font-size: 0.78rem;
+  color: #a9d9ee;
+  background: rgba(56, 217, 255, 0.08);
+  border: 1px solid rgba(56, 217, 255, 0.28);
+  border-radius: 2px;
+}
+
+/* Oferta: preço, desconto e loja */
+.oferta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.85rem;
+}
+
+.selo {
+  padding: 0.2rem 0.6rem;
+  font: 600 0.85rem var(--fonte-titulo);
+  color: #ffc46b;
+  background: rgba(255, 177, 59, 0.12);
+  border: 1px solid rgba(255, 177, 59, 0.45);
+}
+
+.desconto {
+  padding: 0.2rem 0.55rem;
+  font: 700 0.85rem var(--fonte-titulo);
+  color: #1a1203;
+  background: var(--ouro);
+  -webkit-clip-path: polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%);
+}
+
+.loja {
+  padding: 0.18rem 0.6rem;
+  font-size: 0.8rem;
+  color: var(--destaque);
+  border: 1px solid rgba(56, 217, 255, 0.45);
+  border-radius: 2px;
+}
+
+/* ---------- Animações ---------- */
+@keyframes encher {
+  from { transform: scaleX(0); }
+}
+@keyframes varrer {
+  from { --p: 0; }
+}
+@keyframes carregar {
+  from { background-position: -40% 0; }
+  to { background-position: 140% 0; }
+}
+@keyframes listras {
+  to { background-position: 28px 0; }
+}
+
+/* Hover só onde existe mouse (evita "hover preso" no toque) */
+@media (hover: hover) and (pointer: fine) {
+  button:not(:disabled):hover { filter: brightness(1.1); }
+  .capa:hover img { filter: brightness(1.18); }
+}
+
+/* ---------- Telas a partir de 40rem (tablet) ---------- */
+@media (min-width: 40rem) {
+  :root { --margem: 1.5rem; }
+
+  .cartao { padding: 1.35rem; }
+  .jogo { padding: 1.15rem 1.15rem 1.15rem 1.35rem; }
+  .capa { flex-basis: 12rem; }
+  .avatar { width: 5.5rem; height: 5.5rem; }
+}
+
+/* ---------- Telas a partir de 64rem (desktop): painel de controle + resultados ---------- */
+@media (min-width: 64rem) {
+  main {
+    grid-template-columns: minmax(19rem, 23rem) minmax(0, 1fr);
+    column-gap: 1.5rem;
+    row-gap: 0;
+    padding-top: 1.5rem;
+  }
+
+  main > .cartao { grid-column: 1; grid-row: 1 / span 2; }
+  #mensagem { grid-column: 2; grid-row: 1; }
+  #mensagem:not(:empty) { margin-bottom: 1rem; }
+  #resultado { grid-column: 2; grid-row: 2; }
+
+  /* Convite para agir enquanto não há resultado */
+  #mensagem:empty + #resultado:empty::before {
+    content: "Preencha o painel ao lado e gere suas recomendações. O resultado aparece aqui.";
+    display: grid;
+    place-items: center;
+    min-height: 14rem;
+    padding: 2rem;
+    text-align: center;
+    color: var(--suave);
+    border: 1px dashed rgba(129, 160, 214, 0.3);
+  }
+}
+
+/* O painel acompanha a rolagem só se couber na altura da tela */
+@media (min-width: 64rem) and (min-height: 46rem) {
+  main > .cartao {
+    position: sticky;
+    top: 1rem;
+  }
+}
+
+/* ---------- Telas grandes / TV ---------- */
+@media (min-width: 90rem) {
+  html { font-size: 112.5%; }
+}
+
+/* ---------- Telas muito estreitas ---------- */
+@media (max-width: 22.5rem) {
+  .linha { grid-template-columns: minmax(3.5rem, 6rem) minmax(0, 1fr) 2.5rem; }
+  .indicador span { font-size: 0.72rem; }
+}
+
+/* ---------- Acessibilidade ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Modo de alto contraste do Windows: usa bordas simples em vez dos recortes */
+@media (forced-colors: active) {
+  .cartao,
+  .jogo,
+  .indicador {
+    -webkit-clip-path: none;
+    clip-path: none;
+    border: 1px solid CanvasText;
+    background: Canvas;
+  }
+  .cartao::before,
+  .jogo::before,
+  .indicador::before { display: none; }
+  button { border: 1px solid ButtonText; }
+}

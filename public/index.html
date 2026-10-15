@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SteamFRG</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>SteamFRG</h1>
+    <p>Recomendações de jogos com base na sua conta Steam, usando o Gemini e as promoções do IsThereAnyDeal.</p>
+  </header>
+
+  <main>
+    <section class="cartao">
+      <h2>1. Chaves de API</h2>
+      <label for="chaves_gemini">Chaves do Gemini (uma por linha; se uma falhar, usamos a próxima)</label>
+      <textarea id="chaves_gemini" rows="3" placeholder="AIza..."></textarea>
+      <label for="chave_steam">Chave da Steam (opcional)</label>
+      <input type="password" id="chave_steam" placeholder="Deixe vazio para usar a do servidor">
+      <p class="aviso">As chaves ficam salvas apenas neste navegador.</p>
+
+      <h2>2. Sua conta</h2>
+      <label for="input_player">SteamID (número de 17 dígitos)</label>
+      <input type="text" id="input_player" inputmode="numeric" placeholder="7656119...">
+
+      <h2>3. Preferências</h2>
+      <label for="opt_quantidade">Quantidade de recomendações</label>
+      <select id="opt_quantidade">
+        <option value="3">3</option>
+        <option value="5" selected>5</option>
+        <option value="8">8</option>
+        <option value="10">10</option>
+      </select>
+
+      <label for="opt_genero">Gênero preferido</label>
+      <select id="opt_genero">
+        <option value="qualquer">Qualquer</option>
+        <option>RPG</option>
+        <option>Shooter</option>
+        <option>Estratégia</option>
+        <option>Aventura</option>
+        <option>Sobrevivência</option>
+        <option>Terror</option>
+        <option>Indie</option>
+        <option>Corrida e esportes</option>
+      </select>
+
+      <label for="opt_foco">Promoções</label>
+      <select id="opt_foco">
+        <option value="misturar">Misturar promoções com outros jogos</option>
+        <option value="so_promocoes">Somente jogos em promoção</option>
+        <option value="ignorar_promocoes">Ignorar promoções</option>
+      </select>
+
+      <button id="btn_gerar">Gerar recomendações</button>
+    </section>
+
+    <p id="mensagem"></p>
+    <div id="resultado"></div>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
