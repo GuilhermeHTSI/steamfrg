@@ -1,176 +1,282 @@
-const $ = (seletor) => document.querySelector(seletor);
+// script.js
+// Parte que roda no navegador: lê os campos, chama a API do servidor e desenha o resultado na tela.
 
-const campoChaves = $("#chaves_gemini");
-const campoChaveSteam = $("#chave_steam");
-const campoId = $("#input_player");
-const botao = $("#btn_gerar");
-const mensagem = $("#mensagem");
-const resultado = $("#resultado");
+// ---------------------------------------------------------------------------
+// Elementos da página (os ids vêm do index.html)
+// ---------------------------------------------------------------------------
+const campoChavesDoGemini = document.querySelector("#chaves_gemini");
+const campoChaveDaSteam = document.querySelector("#chave_steam");
+const campoSteamId = document.querySelector("#input_player");
+const seletorQuantidade = document.querySelector("#opt_quantidade");
+const seletorGenero = document.querySelector("#opt_genero");
+const seletorFocoEmPromocao = document.querySelector("#opt_foco");
+const botaoGerar = document.querySelector("#btn_gerar");
+const areaDaMensagem = document.querySelector("#mensagem");
+const areaDoResultado = document.querySelector("#resultado");
 
-// Lembra o que o usuário digitou da última vez (só neste navegador)
-campoChaves.value = localStorage.getItem("chavesGemini") || "";
-campoChaveSteam.value = localStorage.getItem("chaveSteam") || "";
-campoId.value = localStorage.getItem("steamId") || "";
+// A cor do anel de compatibilidade depende da nota (0 a 100).
+const NOTA_MINIMA_PARA_VERDE = 85;
+const NOTA_MINIMA_PARA_AMARELO = 70;
 
-// Evita que textos vindos da Steam/Gemini quebrem o HTML da página
-const esc = (texto) =>
-  String(texto ?? "").replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
-  );
-
-function mostrarMensagem(texto, ehErro) {
-  mensagem.textContent = texto;
-  mensagem.className = ehErro ? "erro" : "";
+// ---------------------------------------------------------------------------
+// Campos lembrados pelo navegador (localStorage), para não digitar tudo de novo
+// ---------------------------------------------------------------------------
+function restaurarCamposSalvos() {
+  campoChavesDoGemini.value = localStorage.getItem("chavesGemini") || "";
+  campoChaveDaSteam.value = localStorage.getItem("chaveSteam") || "";
+  campoSteamId.value = localStorage.getItem("steamId") || "";
 }
 
-function corDaNota(nota) {
-  if (nota >= 85) return "var(--verde)";
-  if (nota >= 70) return "var(--amarelo)";
+function salvarCamposNoNavegador() {
+  localStorage.setItem("chavesGemini", campoChavesDoGemini.value);
+  localStorage.setItem("chaveSteam", campoChaveDaSteam.value);
+  localStorage.setItem("steamId", campoSteamId.value.trim());
+}
+
+// ---------------------------------------------------------------------------
+// Funções pequenas de apoio
+// ---------------------------------------------------------------------------
+
+// Troca caracteres especiais (como < e >) por versões seguras.
+// Assim, um texto vindo da Steam ou do Gemini nunca quebra o HTML da página.
+function escaparHtml(texto) {
+  const substituicoes = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+
+  return String(texto ?? "").replace(/[&<>"']/g, (caractere) => substituicoes[caractere]);
+}
+
+function mostrarMensagem(texto, ehErro) {
+  areaDaMensagem.textContent = texto;
+  areaDaMensagem.className = ehErro ? "erro" : "";
+}
+
+// Devolve uma das cores definidas no style.css.
+function escolherCorDaNota(nota) {
+  if (nota >= NOTA_MINIMA_PARA_VERDE) return "var(--verde)";
+  if (nota >= NOTA_MINIMA_PARA_AMARELO) return "var(--amarelo)";
   return "var(--vermelho)";
 }
 
-// Gráfico de barras: itens = [{ nome, valor }], max = valor que preenche a barra toda
-function grafico(itens, max, sufixo) {
+// Garante que a nota fique entre 0 e 100, mesmo que o Gemini devolva algo estranho.
+function limitarNota(nota) {
+  return Math.max(0, Math.min(100, Number(nota) || 0));
+}
+
+// ---------------------------------------------------------------------------
+// Peças da tela: cada função devolve um pedaço de HTML
+// ---------------------------------------------------------------------------
+
+// Gráfico de barras. Cada item tem { nome, valor }.
+// "valorMaximo" é o valor que preenche a barra inteira; "sufixo" é a unidade (% ou h).
+function montarGraficoDeBarras(itens, valorMaximo, sufixo) {
   return itens
-    .map(
-      (i) => `
+    .map((item) => {
+      const larguraEmPorcentagem = Math.min((item.valor / valorMaximo) * 100, 100);
+
+      return `
       <div class="linha">
-        <span class="rotulo">${esc(i.nome)}</span>
-        <div class="barra"><span style="width:${Math.min((i.valor / max) * 100, 100)}%"></span></div>
-        <span class="valor">${i.valor}${sufixo}</span>
-      </div>`
-    )
+        <span class="rotulo">${escaparHtml(item.nome)}</span>
+        <div class="barra"><span style="width:${larguraEmPorcentagem}%"></span></div>
+        <span class="valor">${item.valor}${sufixo}</span>
+      </div>`;
+    })
     .join("");
 }
 
-function cartaoJogo(r) {
-  const nota = Math.max(0, Math.min(100, Number(r.compatibilidade) || 0));
+// Preço, desconto e loja de um jogo em promoção.
+function montarOferta(recomendacao) {
+  if (!recomendacao.emPromocao) {
+    return "";
+  }
+
+  const selosDeDesconto = recomendacao.desconto
+    ? `<span class="desconto">${escaparHtml(recomendacao.desconto)}</span>`
+    : "";
+  const seloDaLoja = recomendacao.loja ? `<span class="loja">${escaparHtml(recomendacao.loja)}</span>` : "";
+
   return `
-    <article class="jogo ${r.emPromocao ? "promo" : ""}">
+        <div class="oferta">
+          <span class="selo">EM PROMOÇÃO · ${escaparHtml(recomendacao.preco)}</span>
+          ${selosDeDesconto}
+          ${seloDaLoja}
+        </div>`;
+}
+
+function montarCartaoDeRecomendacao(recomendacao) {
+  const nota = limitarNota(recomendacao.compatibilidade);
+  const classeDoCartao = recomendacao.emPromocao ? "jogo promo" : "jogo";
+  const tags = (recomendacao.tags || []).map((tag) => `<span class="tag">${escaparHtml(tag)}</span>`).join("");
+
+  return `
+    <article class="${classeDoCartao}">
       <div class="jogo-topo">
-        <h3>${esc(r.nome)}</h3>
-        <div class="anel" style="--p:${nota};--cor:${corDaNota(nota)}"><span>${nota}%</span></div>
+        <h3>${escaparHtml(recomendacao.nome)}</h3>
+        <div class="anel" style="--p:${nota};--cor:${escolherCorDaNota(nota)}"><span>${nota}%</span></div>
       </div>
-      <p>${esc(r.motivo)}</p>
-      <div class="tags">${(r.tags || []).map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</div>
-      ${r.emPromocao ? `
-      <div class="oferta">
-        <span class="selo">EM PROMOÇÃO · ${esc(r.preco)}</span>
-        ${r.desconto ? `<span class="desconto">${esc(r.desconto)}</span>` : ""}
-        ${r.loja ? `<span class="loja">${esc(r.loja)}</span>` : ""}
-      </div>` : ""}
+      <p>${escaparHtml(recomendacao.motivo)}</p>
+      <div class="tags">${tags}</div>
+      ${montarOferta(recomendacao)}
     </article>`;
 }
 
-function desenharResultado({ perfil, resumoPerfil, generos, recomendacoes, rodizio }) {
-  const promocoes = recomendacoes.filter((r) => r.emPromocao).length;
-
-  const falhas = rodizio.falhas.length
-  ? ` (${rodizio.falhas.map((f) => `chave ${f.chave}: erro ${f.status}`).join(", ")})`
-  : "";
-  const textoRodizio = `Respondido pela chave ${rodizio.chaveUsada} de ${rodizio.totalChaves}${falhas}`;
-
-  const recentes = perfil.maisRecentes.length
-    ? `<section class="cartao">
-         <h2>Horas nas últimas 2 semanas</h2>
-         ${grafico(
-           perfil.maisRecentes.map((j) => ({ nome: j.nome, valor: j.horas })),
-           Math.max(...perfil.maisRecentes.map((j) => j.horas)),
-           "h"
-         )}
-       </section>`
-    : "";
-
-  const capas = perfil.maisJogados
-    .map(
-      (j) => `
-      <div class="capa">
-        <img src="https://cdn.akamai.steamstatic.com/steam/apps/${j.appid}/header.jpg"
-             alt="${esc(j.nome)}" loading="lazy" onerror="this.style.display='none'">
-        <span>${esc(j.nome)} · ${j.horas}h</span>
-      </div>`
-    )
-    .join("");
-
-  resultado.innerHTML = `
+function montarCartaoDoPerfil(perfil, resumoDoPerfil) {
+  return `
     <section class="cartao perfil">
-      <img class="avatar" src="${esc(perfil.avatar)}" alt="Avatar">
+      <img class="avatar" src="${escaparHtml(perfil.avatar)}" alt="Avatar">
       <div>
-        <h2>${esc(perfil.nome)}</h2>
-        <p>${esc(resumoPerfil)}</p>
+        <h2>${escaparHtml(perfil.nome)}</h2>
+        <p>${escaparHtml(resumoDoPerfil)}</p>
       </div>
-    </section>
-
-    <section class="indicadores">
-      <div class="indicador"><strong>${perfil.totalJogos}</strong><span>jogos na conta</span></div>
-      <div class="indicador"><strong>${recomendacoes.length}</strong><span>recomendações</span></div>
-      <div class="indicador"><strong>${promocoes}</strong><span>em promoção</span></div>
-    </section>
-
-    <p class="rodizio">${esc(textoRodizio)}</p>
-
-    <div class="graficos">
-      <section class="cartao">
-        <h2>Seus gêneros</h2>
-        ${grafico(generos.map((g) => ({ nome: g.nome, valor: g.percentual })), 100, "%")}
-      </section>
-      ${recentes}
-    </div>
-
-    <section class="cartao">
-      <h2>Mais jogados</h2>
-      <div class="capas">${capas}</div>
-    </section>
-
-    <h2>Recomendados para você</h2>
-    <div class="grade">${recomendacoes.map(cartaoJogo).join("")}</div>`;
+    </section>`;
 }
 
-botao.onclick = function () {
-  const chavesGemini = campoChaves.value
-    .split("\n")
-    .map((c) => c.trim())
-    .filter(Boolean);
-  const steamId = campoId.value.trim();
+function montarIndicadores(totalDeJogos, totalDeRecomendacoes, totalEmPromocao) {
+  return `
+    <section class="indicadores">
+      <div class="indicador"><strong>${totalDeJogos}</strong><span>jogos na conta</span></div>
+      <div class="indicador"><strong>${totalDeRecomendacoes}</strong><span>recomendações</span></div>
+      <div class="indicador"><strong>${totalEmPromocao}</strong><span>em promoção</span></div>
+    </section>`;
+}
 
-  if (!steamId || chavesGemini.length === 0) {
+// Texto que mostra qual chave do Gemini respondeu. Exemplo:
+// "Respondido pela chave 2 de 2 (chave 1: erro 400)"
+function montarTextoDoRodizio(rodizio) {
+  const chavesQueFalharam = rodizio.falhas.map((falha) => `chave ${falha.chave}: erro ${falha.status}`);
+  const detalhesDasFalhas = chavesQueFalharam.length > 0 ? ` (${chavesQueFalharam.join(", ")})` : "";
+
+  return `Respondido pela chave ${rodizio.chaveUsada} de ${rodizio.totalChaves}${detalhesDasFalhas}`;
+}
+
+function montarSecaoDeGeneros(generos) {
+  const itensDoGrafico = generos.map((genero) => ({ nome: genero.nome, valor: genero.percentual }));
+
+  return `
+      <section class="cartao">
+        <h2>Seus gêneros</h2>
+        ${montarGraficoDeBarras(itensDoGrafico, 100, "%")}
+      </section>`;
+}
+
+// Se o jogador não jogou nada nas últimas 2 semanas, a seção nem aparece.
+function montarSecaoDeHorasRecentes(jogosRecentes) {
+  if (jogosRecentes.length === 0) {
+    return "";
+  }
+
+  const itensDoGrafico = jogosRecentes.map((jogo) => ({ nome: jogo.nome, valor: jogo.horas }));
+  const maiorQuantidadeDeHoras = Math.max(...itensDoGrafico.map((item) => item.valor));
+
+  return `
+      <section class="cartao">
+        <h2>Horas nas últimas 2 semanas</h2>
+        ${montarGraficoDeBarras(itensDoGrafico, maiorQuantidadeDeHoras, "h")}
+      </section>`;
+}
+
+// A imagem da capa vem do endereço público da Steam, que usa o appid do jogo.
+function montarCapaDoJogo(jogo) {
+  const enderecoDaCapa = `https://cdn.akamai.steamstatic.com/steam/apps/${jogo.appid}/header.jpg`;
+
+  return `
+      <div class="capa">
+        <img src="${enderecoDaCapa}" alt="${escaparHtml(jogo.nome)}" loading="lazy" onerror="this.style.display='none'">
+        <span>${escaparHtml(jogo.nome)} · ${jogo.horas}h</span>
+      </div>`;
+}
+
+function montarSecaoDeCapas(jogosMaisJogados) {
+  return `
+    <section class="cartao">
+      <h2>Mais jogados</h2>
+      <div class="capas">${jogosMaisJogados.map(montarCapaDoJogo).join("")}</div>
+    </section>`;
+}
+
+// Junta todas as peças e coloca o resultado na página.
+function mostrarResultado(dadosDaApi) {
+  const { perfil, resumoPerfil, generos, recomendacoes, rodizio } = dadosDaApi;
+  const totalEmPromocao = recomendacoes.filter((recomendacao) => recomendacao.emPromocao).length;
+
+  areaDoResultado.innerHTML = `
+    ${montarCartaoDoPerfil(perfil, resumoPerfil)}
+    ${montarIndicadores(perfil.totalJogos, recomendacoes.length, totalEmPromocao)}
+    <p class="rodizio">${escaparHtml(montarTextoDoRodizio(rodizio))}</p>
+    <div class="graficos">
+      ${montarSecaoDeGeneros(generos)}
+      ${montarSecaoDeHorasRecentes(perfil.maisRecentes)}
+    </div>
+    ${montarSecaoDeCapas(perfil.maisJogados)}
+    <h2>Recomendados para você</h2>
+    <div class="grade">${recomendacoes.map(montarCartaoDeRecomendacao).join("")}</div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Ação principal: clique no botão "Gerar recomendações"
+// ---------------------------------------------------------------------------
+
+// Uma chave por linha no campo de texto; linhas vazias são ignoradas.
+function lerChavesDoGemini() {
+  return campoChavesDoGemini.value
+    .split("\n")
+    .map((linha) => linha.trim())
+    .filter((linha) => linha !== "");
+}
+
+// Reúne tudo o que o servidor precisa para gerar as recomendações.
+function montarPedidoParaOServidor(steamId, chavesDoGemini) {
+  return {
+    steamId,
+    chaveSteam: campoChaveDaSteam.value.trim(),
+    chavesGemini: chavesDoGemini,
+    opcoes: {
+      quantidade: seletorQuantidade.value,
+      genero: seletorGenero.value,
+      foco: seletorFocoEmPromocao.value,
+    },
+  };
+}
+
+async function gerarRecomendacoes() {
+  const steamId = campoSteamId.value.trim();
+  const chavesDoGemini = lerChavesDoGemini();
+
+  if (!steamId || chavesDoGemini.length === 0) {
     mostrarMensagem("Informe o SteamID e ao menos uma chave do Gemini.", true);
     return;
   }
 
-  localStorage.setItem("chavesGemini", campoChaves.value);
-  localStorage.setItem("chaveSteam", campoChaveSteam.value);
-  localStorage.setItem("steamId", steamId);
+  salvarCamposNoNavegador();
 
-  botao.disabled = true;
-  resultado.innerHTML = "";
+  // Enquanto espera: desliga o botão (evita cliques repetidos) e limpa o resultado antigo.
+  botaoGerar.disabled = true;
+  areaDoResultado.innerHTML = "";
   mostrarMensagem("Consultando a Steam, buscando promoções e pedindo ao Gemini... pode levar alguns segundos.");
 
-  fetch("/api/recomendar", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      steamId,
-      chaveSteam: campoChaveSteam.value.trim(),
-      chavesGemini,
-      opcoes: {
-        quantidade: $("#opt_quantidade").value,
-        genero: $("#opt_genero").value,
-        foco: $("#opt_foco").value,
-      },
-    }),
-  })
-    .then((res) => res.json())
-    .then((dados) => {
-      if (dados.erro) {
-        mostrarMensagem(dados.erro, true);
-        return;
-      }
-      mostrarMensagem("");
-      desenharResultado(dados);
-    })
-    .catch(() => mostrarMensagem("Não foi possível falar com o servidor.", true))
-    .finally(() => {
-      botao.disabled = false;
+  try {
+    const resposta = await fetch("/api/recomendar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(montarPedidoParaOServidor(steamId, chavesDoGemini)),
     });
-};
+    const dadosDaApi = await resposta.json();
+
+    if (dadosDaApi.erro) {
+      mostrarMensagem(dadosDaApi.erro, true);
+      return;
+    }
+
+    mostrarMensagem("");
+    mostrarResultado(dadosDaApi);
+  } catch (erro) {
+    mostrarMensagem("Não foi possível falar com o servidor.", true);
+  } finally {
+    botaoGerar.disabled = false; // roda sempre, com sucesso ou com erro
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Início
+// ---------------------------------------------------------------------------
+restaurarCamposSalvos();
+botaoGerar.addEventListener("click", gerarRecomendacoes);
